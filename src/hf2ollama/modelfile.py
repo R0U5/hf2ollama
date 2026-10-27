@@ -201,11 +201,13 @@ def _write_modelfile(
     return modelfile_path
 
 
-def generate_modelfile(cfg: Config, resolved: ResolvedInput, quant_path: Path, state) -> Path:
+def generate_modelfile(cfg: Config, resolved: ResolvedInput, quant_path: Path, state, display=None) -> Path:
     """Entry point. Resumable via state."""
 
     modelfile_path = cfg.output_dir / f"{cfg.modelfile_name}.Modelfile"
     if state.should_skip("modelfile", [modelfile_path]) and state.is_done("modelfile"):
+        if display is not None:
+            display.skipped("modelfile", str(modelfile_path))
         return modelfile_path
 
     model_dir = resolved.local_dir
