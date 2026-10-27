@@ -6,6 +6,7 @@ user, and fail with specific errors on non-zero exit.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,11 @@ def _find_executable(name: str, cfg: Config, kind: str) -> Path:
         cand = ll_dir / name
         if cand.is_file():
             return cand
+        # Windows: check for .exe extension (Path.is_file doesn't auto-resolve)
+        if os.name == 'nt':
+            cand_exe = ll_dir / f"{name}.exe"
+            if cand_exe.is_file():
+                return cand_exe
     on_path = shutil.which(name)
     if on_path:
         return Path(on_path)
@@ -36,7 +42,7 @@ def _find_executable(name: str, cfg: Config, kind: str) -> Path:
     )
 
 
-def _stream_subprocess(cmd: list[str], cwd: Path, label: str) -> None:
+def _stream_subprocess(cmd: list[str], cwd: Path, label: str, env: dict[str, str] | None = None) -> None:
     """Run a command, streaming stderr to the console, raising on non-zero exit.
 
     Returns nothing on success; raises the appropriate error type otherwise.
@@ -48,6 +54,7 @@ def _stream_subprocess(cmd: list[str], cwd: Path, label: str) -> None:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            env={**os.environ, **env} if env else None,
         )
     except OSError as exc:
         raise ConverterError(f"failed to start {label}: {exc}") from exc
@@ -139,7 +146,10 @@ def quantize(cfg: Config, fp16_path: Path, state, display=None) -> Path:
     cmd = [str(qbin), str(fp16_path), str(out_path), quant]
     if display is not None:
         display.start("quantize", f"llama-quantize {quant}")
-    _stream_subprocess(cmd, cfg.output_dir, "llama-quantize")
+    # Windows: DLLs live alongside the exe — pass ll_dir in PATH so Popen finds them
+    ll_dir = cfg.llama_cpp_dir
+    env = {"PATH": str(ll_dir)} if ll_dir is not None else None
+    _stream_subprocess(cmd, cfg.output_dir, "llama-quantize", env=env)
 
     if not out_path.is_file():
         raise QuantizeError(
